@@ -1,0 +1,169 @@
+[
+    {
+        "id": 1779296464702,
+        "sku": "LE885C",
+        "nome": "Produto teste",
+        "custo": 10.0,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "Produto cadastrado para teste",
+        "criado_em": "2026-05-20T14:01:04.702205"
+    },
+    {
+        "id": 1779297968133,
+        "sku": "XT557",
+        "nome": "Adaptador HDMI",
+        "custo": 3.0,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "",
+        "criado_em": "2026-05-20T14:26:08.134100",
+        "componentes": []
+    },
+    {
+        "id": 1779365315559,
+        "sku": "HX7951",
+        "nome": "Carteira Mágica",
+        "custo": 17.99,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "",
+        "componentes": [],
+        "criado_em": "2026-05-21T09:08:35.559782"
+    },
+    {
+        "id": 1779365498970,
+        "sku": "TOP0864-2",
+        "nome": "BOMBA DE AR ELETRICA 220v - CV024",
+        "custo": 8.5,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "",
+        "componentes": [],
+        "criado_em": "2026-05-21T09:11:38.970302"
+    },
+    {
+        "id": 1779365513257,
+        "sku": "SACO5060",
+        "nome": "Saco a Vacuo 50x60cm - CV020 CK4759",
+        "custo": 1.5,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "",
+        "componentes": [],
+        "criado_em": "2026-05-21T09:11:53.257317"
+    },
+    {
+        "id": 1779370566937,
+        "sku": "CV025",
+        "nome": "Produto unitário exemplo",
+        "custo": 84.0,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "Produto simples",
+        "componentes": [],
+        "criado_em": "2026-05-21T10:36:06.937162"
+    },
+    {
+        "id": 1779370732379,
+        "sku": "LE878",
+        "nome": "Outro produto unitário",
+        "custo": 3.0,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "Produto simples",
+        "componentes": [],
+        "criado_em": "2026-05-21T10:38:52.379100"
+    },
+    {
+        "id": 1779370732400,
+        "sku": "SAC05060",
+        "nome": "Saco a vácuo 50x60",
+        "custo": 1.5,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "Se no pedido vier SAC05060-KIT2, o sistema entende 2 unidades automaticamente",
+        "componentes": [],
+        "criado_em": "2026-05-21T10:38:52.400302"
+    },
+    {
+        "id": 1779370732437,
+        "sku": "KIT-LE885C-LE878",
+        "nome": "Kit exemplo composto",
+        "custo": 13.0,
+        "imposto": 10.0,
+        "tipo": "kit_personalizado",
+        "frete_gratis": 0.0,
+        "observacao": "Componente 1",
+        "componentes": [
+            {
+                "sku": "LE885C",
+                "quantidade": 1,
+                "custo_unitario": 10.0,
+                "custo_total": 10.0
+            },
+            {
+                "sku": "LE878",
+                "quantidade": 1,
+                "custo_unitario": 3.0,
+                "custo_total": 3.0
+            }
+        ],
+        "criado_em": "2026-05-21T10:38:52.437958"
+    },
+    {
+        "id": 1779370996103,
+        "sku": "KIT2SACO50X60BOMBA220V",
+        "nome": "Produto unitário exemplo",
+        "custo": 11.5,
+        "imposto": 10.0,
+        "tipo": "kit_personalizado",
+        "frete_gratis": 0.0,
+        "observacao": "Produto simples",
+        "componentes": [
+            {
+                "sku": "SAC05060",
+                "quantidade": 2,
+                "custo_unitario": 1.5,
+                "custo_total": 3.0
+            },
+            {
+                "sku": "TOP0864-2",
+                "quantidade": 1,
+                "custo_unitario": 8.5,
+                "custo_total": 8.5
+            }
+        ],
+        "criado_em": "2026-05-21T10:43:16.103965"
+    },
+    {
+        "id": 1779370996104,
+        "sku": "CV017",
+        "nome": "Rechaud Inox 11 Litros 2 Cubas Gn E Tampa Removível - CV017",
+        "custo": 75.0,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "Cadastrado pelo Dashboard",
+        "componentes": []
+    },
+    {
+        "id": 1779370996105,
+        "sku": "KIT10SACO50X60BOMBAMANUAL",
+        "nome": "Kit 10 Saco a Vacuo 50x60 + Bomba de Ar Manual -  SACO5060 CK4759 CK4233",
+        "custo": 18.9,
+        "imposto": 10.0,
+        "tipo": "unitario",
+        "frete_gratis": 0.0,
+        "observacao": "Cadastrado pelo Dashboard",
+        "componentes": []
+    }
+]

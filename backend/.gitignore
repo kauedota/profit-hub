@@ -1,0 +1,21 @@
+# Ambiente Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Variáveis de ambiente — NUNCA commitar
+.env
+.env.local
+
+# Banco local SQLite (não vai pra produção)
+data/*.db
+data/*.db-journal
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
