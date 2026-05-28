@@ -9,6 +9,7 @@ from app.routes import (
     auth_routes,
     billing_routes,
     config_routes,
+    ml_routes,
     product_routes,
     report_routes,
     upload_routes,
@@ -21,6 +22,15 @@ app = FastAPI(
     description="Plataforma de cálculo de lucro real para lojistas de marketplaces.",
     version="1.0.0",
 )
+
+
+@app.on_event("startup")
+def startup():
+    """Garante que o banco está atualizado antes do primeiro request."""
+    from app.database import criar_tabelas
+
+    criar_tabelas()
+
 
 # Origens liberadas no CORS, configuráveis pelo .env (CORS_ORIGINS, separadas por vírgula).
 origens_env = os.getenv("CORS_ORIGINS", "*").strip()
@@ -46,6 +56,7 @@ app.include_router(upload_routes.router)
 app.include_router(config_routes.router)
 app.include_router(account_routes.router)
 app.include_router(billing_routes.router)
+app.include_router(ml_routes.router)
 
 
 @app.get("/")
