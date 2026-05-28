@@ -26,10 +26,14 @@ app = FastAPI(
 
 @app.on_event("startup")
 def startup():
-    """Garante que o banco está atualizado antes do primeiro request."""
-    from app.database import criar_tabelas
+    """Roda migrações no startup. Se o banco demorar, loga e continua."""
+    try:
+        from app.database import criar_tabelas
 
-    criar_tabelas()
+        criar_tabelas()
+        print("[startup] Banco atualizado com sucesso.")
+    except Exception as e:
+        print(f"[startup] Aviso: migração falhou ({e}). Continuando...")
 
 
 # Origens liberadas no CORS, configuráveis pelo .env (CORS_ORIGINS, separadas por vírgula).

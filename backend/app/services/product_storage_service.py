@@ -1,8 +1,11 @@
+import io
 import json
+import re
+import zipfile
 from io import BytesIO
 from pathlib import Path
 
-import pandas as pd
+import openpyxl
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -17,6 +20,53 @@ EMPRESA_PADRAO_NOME = "Empresa Local"
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 JSON_ANTIGO = DATA_DIR / "produtos.json"
+
+
+def _abrir_xlsx(caminho_arquivo):
+    """
+    Abre um xlsx com openpyxl, corrigindo automaticamente o bug de
+    activePane inválido comum nos exports da Shopee.
+    """
+    try:
+        return openpyxl.load_workbook(caminho_arquivo, data_only=True)
+    except Exception:
+        validos = ("bottomRight", "bottomLeft", "topRight", "topLeft")
+        with zipfile.ZipFile(caminho_arquivo, "r") as origem:
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as dest:
+                for item in origem.infolist():
+                    conteudo = origem.read(item.filename)
+                    if item.filename.endswith(".xml"):
+                        txt = conteudo.decode("utf-8", errors="ignore")
+                        txt = re.sub(
+                            r'activePane="([^"]*)"',
+                            lambda m: m.group(0) if m.group(1) in validos else "",
+                            txt,
+                        )
+                        conteudo = txt.encode("utf-8")
+                    dest.writestr(item, conteudo)
+            buf.seek(0)
+        return openpyxl.load_workbook(buf, data_only=True)
+
+
+def _xlsx_para_lista(caminho_arquivo, linha_cabecalho=0):
+    """
+    Lê um xlsx e devolve lista de dicts {coluna: valor}.
+    Substitui pd.read_excel sem depender de pandas/numpy.
+    """
+    wb = _abrir_xlsx(caminho_arquivo)
+    ws = wb.active
+    todas = list(ws.iter_rows(values_only=True))
+    wb.close()
+
+    if not todas or linha_cabecalho >= len(todas):
+        return []
+
+    cab = [
+        str(h).strip() if h is not None else f"_col{i}"
+        for i, h in enumerate(todas[linha_cabecalho])
+    ]
+    return [{c: v for c, v in zip(cab, row)} for row in todas[linha_cabecalho + 1 :]]
 
 
 def normalizar_sku(sku):
@@ -669,58 +719,23 @@ def gerar_modelo_importacao_produtos():
     return arquivo
 
 
-def _ler_excel_tolerante(caminho_arquivo, **kwargs):
-    """
-    Lê um Excel mesmo quando o arquivo tem atributos inválidos que quebram o
-    openpyxl (comum em exports da Shopee, ex.: activePane="bottom_left").
-    Se a leitura normal falhar, corrige o XML em memória e tenta de novo.
-    """
-    try:
-        return pd.read_excel(caminho_arquivo, **kwargs)
-    except Exception:
-        import io
-        import re
-        import zipfile
-
-        origem = zipfile.ZipFile(caminho_arquivo, "r")
-        buffer = io.BytesIO()
-        destino = zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED)
-
-        validos = ("bottomRight", "bottomLeft", "topRight", "topLeft")
-        for item in origem.infolist():
-            conteudo = origem.read(item.filename)
-            if item.filename.endswith(".xml"):
-                texto = conteudo.decode("utf-8", errors="ignore")
-
-                # remove activePane inválido (qualquer valor fora da lista permitida)
-                def _corrigir(m):
-                    return m.group(0) if m.group(1) in validos else ""
-
-                texto = re.sub(r'activePane="([^"]*)"', _corrigir, texto)
-                conteudo = texto.encode("utf-8")
-            destino.writestr(item, conteudo)
-
-        origem.close()
-        destino.close()
-        buffer.seek(0)
-        return pd.read_excel(buffer, **kwargs)
+def _ler_excel_tolerante(caminho_arquivo, **_kwargs):
+    """Compatibilidade: devolve lista de dicts. Usa openpyxl, sem pandas."""
+    return _xlsx_para_lista(caminho_arquivo)
 
 
 def importar_mapa_shopee(caminho_arquivo, empresa_id=EMPRESA_PADRAO_ID):
-    """
-    Importa a planilha de produtos da Shopee (mass_update_basic_info), que liga
-    o ID do Produto ao SKU de referência. Cria/atualiza produtos vinculando o ID
-    da Shopee em codigos_externos. NÃO altera o custo de produtos já cadastrados.
-    """
+    """Importa o mapa de produtos da Shopee (mass_update_basic_info)."""
     preparar_banco()
 
-    bruto = _ler_excel_tolerante(caminho_arquivo, header=None, dtype=object)
+    wb = _abrir_xlsx(caminho_arquivo)
+    ws = wb.active
+    todas = list(ws.iter_rows(values_only=True))
+    wb.close()
 
-    # acha a linha de cabeçalho "ID do Produto"
     linha_cab = None
-    for i in range(min(10, len(bruto))):
-        valores = [str(v).strip().lower() for v in bruto.iloc[i].tolist()]
-        if any("id do produto" in v for v in valores):
+    for i, row in enumerate(todas[:10]):
+        if any("id do produto" in str(v).strip().lower() for v in row if v):
             linha_cab = i
             break
     if linha_cab is None:
@@ -728,14 +743,15 @@ def importar_mapa_shopee(caminho_arquivo, empresa_id=EMPRESA_PADRAO_ID):
             "Planilha da Shopee não reconhecida (não encontrei 'ID do Produto')."
         )
 
-    cabecalho = [str(c).strip() for c in bruto.iloc[linha_cab].tolist()]
-    dados = bruto.iloc[linha_cab + 1 :].copy()
-    dados.columns = cabecalho
+    cab = [
+        str(h).strip() if h is not None else f"_col{i}"
+        for i, h in enumerate(todas[linha_cab])
+    ]
+    linhas_dados = [{c: v for c, v in zip(cab, row)} for row in todas[linha_cab + 1 :]]
 
     def achar(opcoes):
-        for c in dados.columns:
-            cl = str(c).strip().lower()
-            if any(o in cl for o in opcoes):
+        for c in cab:
+            if any(o in str(c).strip().lower() for o in opcoes):
                 return c
         return None
 
@@ -746,20 +762,16 @@ def importar_mapa_shopee(caminho_arquivo, empresa_id=EMPRESA_PADRAO_ID):
     if not col_id or not col_sku:
         raise ValueError("Não encontrei as colunas de ID do Produto e SKU.")
 
-    vinculados = 0
-    erros = []
+    vinculados, erros = 0, []
 
-    for _, linha in dados.iterrows():
+    for linha in linhas_dados:
         try:
             id_produto = normalizar_codigo(linha.get(col_id))
             sku = normalizar_sku(linha.get(col_sku))
             nome = str(linha.get(col_nome) or sku).strip() if col_nome else sku
-
-            if not id_produto.isdigit() or not sku:
+            if not id_produto or not id_produto.isdigit() or not sku:
                 continue
-
             existente = buscar_produto_por_sku(sku, empresa_id=empresa_id)
-
             if existente:
                 codigos = set(texto_para_codigos(existente.get("codigosExternos")))
                 codigos.add(id_produto)
@@ -769,9 +781,9 @@ def importar_mapa_shopee(caminho_arquivo, empresa_id=EMPRESA_PADRAO_ID):
                         "sku": sku,
                         "nome": existente.get("nome") or nome,
                         "custo": existente.get("custo") or 0,
-                        "imposto": existente.get("imposto") or 0,
+                        "imposto": 0,
                         "tipo": existente.get("tipo") or "unitario",
-                        "frete_gratis": existente.get("frete_gratis") or 0,
+                        "frete_gratis": 0,
                         "observacao": existente.get("observacao") or "",
                         "componentes": existente.get("componentes") or [],
                         "codigosExternos": ",".join(sorted(codigos)),
@@ -790,88 +802,79 @@ def importar_mapa_shopee(caminho_arquivo, empresa_id=EMPRESA_PADRAO_ID):
                     },
                     empresa_id=empresa_id,
                 )
-
             vinculados += 1
-
-        except Exception as erro:
-            erros.append({"sku": str(linha.get(col_sku) or ""), "erro": str(erro)})
+        except Exception as e:
+            erros.append({"sku": str(linha.get(col_sku) or ""), "erro": str(e)})
 
     return {
         "total_vinculados": vinculados,
         "total_erros": len(erros),
         "erros": erros,
-        "observacao": (
-            "Produtos vinculados ao ID da Shopee. Lembre de definir o custo de "
-            "cada produto novo (entrou com custo 0)."
-        ),
+        "observacao": "Produtos vinculados. Defina o custo dos novos (entraram com 0).",
     }
 
 
 def importar_produtos_excel(caminho_arquivo, empresa_id=EMPRESA_PADRAO_ID):
     preparar_banco()
 
-    df = _ler_excel_tolerante(caminho_arquivo)
-
-    df.columns = [str(coluna).strip() for coluna in df.columns]
+    linhas_dados = _xlsx_para_lista(caminho_arquivo)
 
     criados = 0
     atualizados = 0
     erros = []
-
     produtos_agrupados = {}
 
-    for index, linha in df.iterrows():
-        linha_excel = index + 2
-
+    for idx, linha in enumerate(linhas_dados):
+        linha_excel = idx + 2
         try:
             tipo = str(linha.get("tipo") or "unitario").strip()
             sku = normalizar_sku(linha.get("sku"))
-            nome = str(linha.get("nome") or sku).strip()
+            nome = str(linha.get("nome") or sku or "").strip()
             custo_unitario = linha.get("custo_unitario")
             componente_sku = normalizar_sku(linha.get("componente_sku"))
             componente_quantidade = linha.get("componente_quantidade")
             observacao = str(linha.get("observacao") or "").strip()
-            codigo_marketplace = linha.get("codigo_marketplace")
-            if codigo_marketplace is None:
-                codigo_marketplace = linha.get("id_produto")
+            codigo_marketplace = linha.get("codigo_marketplace") or linha.get(
+                "id_produto"
+            )
 
             if not sku:
                 continue
 
             if sku not in produtos_agrupados:
+                custo = 0.0
+                try:
+                    if custo_unitario is not None:
+                        custo = float(custo_unitario)
+                except (TypeError, ValueError):
+                    pass
+
+                cod_ext = ""
+                if codigo_marketplace is not None:
+                    cod_ext = normalizar_codigo(codigo_marketplace)
+
                 produtos_agrupados[sku] = {
                     "linha_excel": linha_excel,
                     "tipo": tipo,
                     "sku": sku,
                     "nome": nome,
-                    "custo": (
-                        float(custo_unitario or 0)
-                        if str(custo_unitario) != "nan"
-                        else 0
-                    ),
+                    "custo": custo,
                     "imposto": 0,
                     "frete_gratis": 0,
                     "observacao": observacao,
                     "componentes": [],
-                    "codigosExternos": (
-                        normalizar_codigo(codigo_marketplace)
-                        if str(codigo_marketplace) != "nan"
-                        else ""
-                    ),
+                    "codigosExternos": cod_ext,
                 }
 
             if tipo == "kit_personalizado" and componente_sku:
-                quantidade = (
-                    float(componente_quantidade)
-                    if str(componente_quantidade) != "nan"
-                    else 1
-                )
-
+                qtd = 1.0
+                try:
+                    if componente_quantidade is not None:
+                        qtd = float(componente_quantidade)
+                except (TypeError, ValueError):
+                    pass
                 produtos_agrupados[sku]["componentes"].append(
-                    {
-                        "sku": componente_sku,
-                        "quantidade": quantidade,
-                    }
+                    {"sku": componente_sku, "quantidade": qtd}
                 )
 
         except Exception as erro:
