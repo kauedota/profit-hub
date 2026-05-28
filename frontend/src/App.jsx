@@ -50,6 +50,10 @@ function App() {
   const [minhaConta, setMinhaConta] = useState(null);
   const [carregandoMinhaConta, setCarregandoMinhaConta] = useState(false);
   const [assinando, setAssinando] = useState(false);
+  const [mlStatus, setMlStatus] = useState(null);
+  const [mlSincronizando, setMlSincronizando] = useState(false);
+  const [mlDataInicio, setMlDataInicio] = useState("");
+  const [mlDataFim, setMlDataFim] = useState("");
   const [carregandoConfiguracoes, setCarregandoConfiguracoes] = useState(false);
 
   const [resumo, setResumo] = useState(null);
@@ -274,6 +278,73 @@ function App() {
     }
   };
 
+  const carregarStatusML = async () => {
+    try {
+      const r = await axios.get(`${API_URL}/ml/status`, {
+        headers: headersAuth,
+      });
+      setMlStatus(r.data);
+    } catch (e) {
+      console.error("Erro ao carregar status ML:", e);
+    }
+  };
+
+  const conectarML = async () => {
+    try {
+      const r = await axios.get(`${API_URL}/ml/connect`, {
+        headers: headersAuth,
+      });
+      if (r.data?.url) window.location.href = r.data.url;
+    } catch (e) {
+      alert(
+        e.response?.data?.detail || "Erro ao conectar com o Mercado Livre.",
+      );
+    }
+  };
+
+  const desconectarML = async () => {
+    if (!window.confirm("Desconectar sua conta do Mercado Livre?")) return;
+    try {
+      await axios.delete(`${API_URL}/ml/desconectar`, { headers: headersAuth });
+      setMlStatus(null);
+      alert("Conta desconectada.");
+    } catch (e) {
+      alert(e.response?.data?.detail || "Erro ao desconectar.");
+    }
+  };
+
+  const sincronizarML = async () => {
+    if (!mlDataInicio || !mlDataFim) {
+      alert("Selecione o período de início e fim.");
+      return;
+    }
+    try {
+      setMlSincronizando(true);
+      const r = await axios.post(
+        `${API_URL}/ml/sync`,
+        {
+          data_inicio: mlDataInicio,
+          data_fim: mlDataFim,
+          percentual_imposto: percentualImposto,
+        },
+        { headers: headersAuth },
+      );
+      setResumo(r.data.resumo);
+      setPedidos(r.data.pedidos);
+      setFiltroStatus("todos");
+      setFiltroSku("");
+      setFiltroPlataforma("todas");
+      setFiltroLoja("todas");
+      setOcultarCancelados(false);
+      setPaginaAtual(1);
+      setAbaAtiva("dashboard");
+    } catch (e) {
+      alert(e.response?.data?.detail || "Erro ao sincronizar pedidos do ML.");
+    } finally {
+      setMlSincronizando(false);
+    }
+  };
+
   const cancelarAssinatura = async () => {
     if (
       !window.confirm(
@@ -309,9 +380,8 @@ function App() {
 
   useEffect(() => {
     validarSessao();
-    // Detecta retorno do checkout do Mercado Pago
     const params = new URLSearchParams(window.location.search);
-    if (params.get("assinatura") === "processando") {
+    if (params.get("assinatura") === "processando" || params.get("ml")) {
       setAbaAtiva("minha-conta");
       window.history.replaceState({}, "", window.location.pathname);
     }
@@ -328,6 +398,7 @@ function App() {
   useEffect(() => {
     if (usuarioLogado && abaAtiva === "minha-conta") {
       carregarMinhaConta();
+      carregarStatusML();
     }
   }, [usuarioLogado, abaAtiva]);
 
@@ -2933,6 +3004,162 @@ function App() {
                       </p>
                     </div>
                   </div>
+                </section>
+
+                <section className="config-card">
+                  <h2>Integrações</h2>
+
+                  {/* ── Mercado Livre ── */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: "12px",
+                      padding: "16px",
+                      border: "1px solid #e0e0e0",
+                      borderRadius: "8px",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <div>
+                      <strong>Mercado Livre</strong>
+                      {mlStatus?.conectado ? (
+                        <p
+                          style={{
+                            margin: "4px 0 0",
+                            fontSize: "13px",
+                            color: "#2e7d32",
+                          }}
+                        >
+                          ✓ Conectado — Seller ID {mlStatus.seller_id}
+                          {mlStatus.ultimo_sync && (
+                            <span style={{ color: "#888", marginLeft: "8px" }}>
+                              · Último sync:{" "}
+                              {new Date(
+                                mlStatus.ultimo_sync,
+                              ).toLocaleDateString("pt-BR")}
+                            </span>
+                          )}
+                        </p>
+                      ) : (
+                        <p
+                          style={{
+                            margin: "4px 0 0",
+                            fontSize: "13px",
+                            color: "#888",
+                          }}
+                        >
+                          Não conectado — sincronize pedidos direto da API
+                        </p>
+                      )}
+                    </div>
+
+                    {mlStatus?.conectado ? (
+                      <button
+                        type="button"
+                        className="btn-secundario"
+                        onClick={desconectarML}
+                        style={{ fontSize: "13px" }}
+                      >
+                        Desconectar
+                      </button>
+                    ) : (
+                      <button type="button" onClick={conectarML}>
+                        Conectar Mercado Livre →
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Painel de sync — só aparece quando conectado */}
+                  {mlStatus?.conectado && (
+                    <div
+                      style={{
+                        background: "#f8f9fa",
+                        border: "1px solid #e0e0e0",
+                        borderRadius: "8px",
+                        padding: "16px",
+                        marginTop: "8px",
+                      }}
+                    >
+                      <p style={{ margin: "0 0 12px", fontWeight: 600 }}>
+                        Sincronizar pedidos
+                      </p>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "12px",
+                          flexWrap: "wrap",
+                          alignItems: "flex-end",
+                        }}
+                      >
+                        <div>
+                          <label
+                            style={{
+                              fontSize: "13px",
+                              display: "block",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            De
+                          </label>
+                          <input
+                            type="date"
+                            value={mlDataInicio}
+                            onChange={(e) => setMlDataInicio(e.target.value)}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: "6px",
+                              border: "1px solid #ccc",
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            style={{
+                              fontSize: "13px",
+                              display: "block",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Até
+                          </label>
+                          <input
+                            type="date"
+                            value={mlDataFim}
+                            onChange={(e) => setMlDataFim(e.target.value)}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: "6px",
+                              border: "1px solid #ccc",
+                            }}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={sincronizarML}
+                          disabled={
+                            mlSincronizando || !mlDataInicio || !mlDataFim
+                          }
+                        >
+                          {mlSincronizando
+                            ? "Sincronizando..."
+                            : "Sincronizar agora →"}
+                        </button>
+                      </div>
+                      <p
+                        style={{
+                          fontSize: "12px",
+                          color: "#888",
+                          margin: "8px 0 0",
+                        }}
+                      >
+                        Os pedidos aparecerão no Dashboard com SKU e lucro
+                        calculados.
+                      </p>
+                    </div>
+                  )}
                 </section>
 
                 <section className="config-card">

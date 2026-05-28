@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
 
 from app.database import Base
 
@@ -23,11 +23,18 @@ class EmpresaModel(Base):
         default=lambda: datetime.utcnow() + timedelta(days=7),
     )
 
-    # Preparação para pagamento (Mercado Pago / Stripe) — ainda sem cobrança real.
-    gateway_pagamento = Column(String(40), default="")        # "mercado_pago" | "stripe" | ""
-    assinatura_id = Column(String(120), default="")           # id da assinatura no gateway
-    assinatura_status = Column(String(40), default="inativa") # inativa | ativa | cancelada | inadimplente
+    # Assinatura Mercado Pago
+    gateway_pagamento = Column(String(40), default="")
+    assinatura_id = Column(String(120), default="")
+    assinatura_status = Column(String(40), default="inativa")
     data_vencimento = Column(DateTime, nullable=True)
+
+    # Integração Mercado Livre (OAuth)
+    ml_seller_id = Column(String(40), default="")
+    ml_access_token = Column(Text, default="")
+    ml_refresh_token = Column(Text, default="")
+    ml_token_expiry = Column(DateTime, nullable=True)
+    ml_ultimo_sync = Column(DateTime, nullable=True)
 
     ativo = Column(Boolean, default=True)
 
