@@ -49,6 +49,7 @@ function App() {
   ]);
   const [minhaConta, setMinhaConta] = useState(null);
   const [carregandoMinhaConta, setCarregandoMinhaConta] = useState(false);
+  const [assinando, setAssinando] = useState(false);
   const [carregandoConfiguracoes, setCarregandoConfiguracoes] = useState(false);
 
   const [resumo, setResumo] = useState(null);
@@ -251,6 +252,48 @@ function App() {
     }
   };
 
+  const assinarPlano = async (planoId) => {
+    try {
+      setAssinando(true);
+      const response = await axios.post(
+        `${API_URL}/billing/assinar`,
+        { plano: planoId },
+        { headers: headersAuth },
+      );
+      const { init_point } = response.data;
+      if (init_point) {
+        window.location.href = init_point;
+      }
+    } catch (error) {
+      const msg =
+        error.response?.data?.detail ||
+        "Erro ao iniciar assinatura. Tente novamente.";
+      alert(msg);
+    } finally {
+      setAssinando(false);
+    }
+  };
+
+  const cancelarAssinatura = async () => {
+    if (
+      !window.confirm(
+        "Tem certeza que deseja cancelar? Você voltará para o plano Free.",
+      )
+    )
+      return;
+    try {
+      await axios.post(
+        `${API_URL}/billing/cancelar`,
+        {},
+        { headers: headersAuth },
+      );
+      alert("Assinatura cancelada. Você está no plano Free.");
+      carregarMinhaConta();
+    } catch (error) {
+      alert(error.response?.data?.detail || "Erro ao cancelar assinatura.");
+    }
+  };
+
   const carregarMarketplaces = async () => {
     try {
       const response = await axios.get(`${API_URL}/upload/marketplaces`, {
@@ -266,6 +309,12 @@ function App() {
 
   useEffect(() => {
     validarSessao();
+    // Detecta retorno do checkout do Mercado Pago
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("assinatura") === "processando") {
+      setAbaAtiva("minha-conta");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   useEffect(() => {
@@ -2887,56 +2936,149 @@ function App() {
                 </section>
 
                 <section className="config-card">
-                  <h2>Planos disponíveis</h2>
-                  <p>
-                    Faça upgrade para importar relatórios maiores. (Pagamento
-                    ainda não habilitado — em breve.)
-                  </p>
+                  <h2>Planos</h2>
+
+                  {minhaConta.empresa?.assinatura_status === "pendente" && (
+                    <div
+                      style={{
+                        background: "#fff8e1",
+                        border: "1px solid #f0c050",
+                        borderRadius: "8px",
+                        padding: "12px 16px",
+                        marginBottom: "16px",
+                      }}
+                    >
+                      ⏳ Pagamento em processamento. Seu plano será atualizado
+                      automaticamente quando o Mercado Pago confirmar.
+                    </div>
+                  )}
+
+                  {minhaConta.empresa?.assinatura_status === "inadimplente" && (
+                    <div
+                      style={{
+                        background: "#fdecea",
+                        border: "1px solid #e57373",
+                        borderRadius: "8px",
+                        padding: "12px 16px",
+                        marginBottom: "16px",
+                      }}
+                    >
+                      ⚠️ Pagamento pendente. Sua assinatura pode ser suspensa.
+                      Regularize pelo Mercado Pago.
+                    </div>
+                  )}
+
                   <div className="explicacao-grid">
                     {[
-                      { id: "teste", nome: "Teste", limite: "100 pedidos" },
                       {
-                        id: "inicial",
-                        nome: "Inicial",
-                        limite: "500 pedidos/mês",
+                        id: "free",
+                        nome: "Free",
+                        limite: "200 pedidos/relatório",
+                        preco: "Grátis",
+                        destaque: false,
                       },
                       {
                         id: "profissional",
                         nome: "Profissional",
-                        limite: "2.000 pedidos/mês",
+                        limite: "2.000 pedidos/relatório",
+                        preco: "R$ 29,90/mês",
+                        destaque: true,
                       },
                       {
                         id: "avancado",
                         nome: "Avançado",
-                        limite: "10.000 pedidos/mês",
+                        limite: "10.000 pedidos/relatório",
+                        preco: "R$ 59,90/mês",
+                        destaque: false,
                       },
-                    ].map((plano) => (
-                      <div
-                        key={plano.id}
-                        className={
-                          minhaConta.empresa?.plano === plano.id
-                            ? "explicacao-item sucesso"
-                            : "explicacao-item"
-                        }
-                      >
-                        <strong>{plano.nome}</strong>
-                        <p>{plano.limite}</p>
-                        <button
-                          type="button"
-                          disabled={minhaConta.empresa?.plano === plano.id}
-                          onClick={() =>
-                            alert(
-                              "Upgrade de plano ainda não disponível. Em breve com pagamento integrado.",
-                            )
+                    ].map((plano) => {
+                      const planoAtual = minhaConta.empresa?.plano;
+                      const ehAtual =
+                        planoAtual === plano.id ||
+                        (plano.id === "free" &&
+                          ["teste", "free"].includes(planoAtual));
+
+                      return (
+                        <div
+                          key={plano.id}
+                          className={
+                            ehAtual
+                              ? "explicacao-item sucesso"
+                              : "explicacao-item"
+                          }
+                          style={
+                            plano.destaque && !ehAtual
+                              ? { border: "2px solid #1a73e8" }
+                              : {}
                           }
                         >
-                          {minhaConta.empresa?.plano === plano.id
-                            ? "Plano atual"
-                            : "Fazer upgrade"}
-                        </button>
-                      </div>
-                    ))}
+                          {plano.destaque && !ehAtual && (
+                            <small
+                              style={{
+                                background: "#1a73e8",
+                                color: "#fff",
+                                borderRadius: "4px",
+                                padding: "2px 8px",
+                                fontSize: "11px",
+                              }}
+                            >
+                              ★ Mais popular
+                            </small>
+                          )}
+                          <strong>{plano.nome}</strong>
+                          <p>{plano.limite}</p>
+                          <p>
+                            <strong>{plano.preco}</strong>
+                          </p>
+
+                          {ehAtual ? (
+                            <>
+                              <button type="button" disabled>
+                                Plano atual ✓
+                              </button>
+                              {plano.id !== "free" &&
+                                minhaConta.empresa?.assinatura_id && (
+                                  <button
+                                    type="button"
+                                    className="btn-secundario"
+                                    style={{
+                                      marginTop: "6px",
+                                      fontSize: "12px",
+                                    }}
+                                    onClick={cancelarAssinatura}
+                                  >
+                                    Cancelar assinatura
+                                  </button>
+                                )}
+                            </>
+                          ) : plano.id === "free" ? (
+                            <button type="button" disabled>
+                              Grátis sempre
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={assinando}
+                              onClick={() => assinarPlano(plano.id)}
+                            >
+                              {assinando ? "Aguarde..." : "Assinar agora →"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
+
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      color: "#888",
+                      marginTop: "12px",
+                    }}
+                  >
+                    Pagamento seguro via Mercado Pago. Cancele quando quiser,
+                    sem multa.
+                  </p>
                 </section>
               </>
             )}

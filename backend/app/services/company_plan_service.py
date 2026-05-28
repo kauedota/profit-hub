@@ -6,40 +6,56 @@ from app.database import SessionLocal, criar_tabelas
 from app.models.company_model import EmpresaModel
 
 PLANOS = {
-    "teste": {
-        "nome": "Teste",
-        "limite_pedidos_mes": 100,
-        "descricao": "Plano de teste gratuito",
-    },
-    "inicial": {
-        "nome": "Inicial",
-        "limite_pedidos_mes": 500,
-        "descricao": "Até 500 pedidos por mês",
+    # ── Planos ativos ─────────────────────────────────────────────
+    "free": {
+        "nome": "Free",
+        "limite_pedidos_mes": 200,
+        "descricao": "Até 200 pedidos por relatório",
+        "preco": 0.0,
     },
     "profissional": {
         "nome": "Profissional",
         "limite_pedidos_mes": 2000,
-        "descricao": "Até 2.000 pedidos por mês",
+        "descricao": "Até 2.000 pedidos por relatório",
+        "preco": 29.90,
     },
     "avancado": {
         "nome": "Avançado",
         "limite_pedidos_mes": 10000,
-        "descricao": "Até 10.000 pedidos por mês",
+        "descricao": "Até 10.000 pedidos por relatório",
+        "preco": 59.90,
+    },
+    # ── Legado (retrocompatibilidade com registros antigos) ────────
+    "teste": {
+        "nome": "Free",
+        "limite_pedidos_mes": 200,
+        "descricao": "Até 200 pedidos por relatório",
+        "preco": 0.0,
+    },
+    "inicial": {
+        "nome": "Profissional",
+        "limite_pedidos_mes": 2000,
+        "descricao": "Até 2.000 pedidos por relatório",
+        "preco": 29.90,
     },
 }
 
+PLANO_PADRAO = "free"
+
 
 def empresa_para_dict(empresa):
-    plano = empresa.plano or "teste"
-    dados_plano = PLANOS.get(plano, PLANOS["teste"])
+    plano = empresa.plano or PLANO_PADRAO
+    dados_plano = PLANOS.get(plano, PLANOS[PLANO_PADRAO])
+    nome_plano_exibicao = dados_plano["nome"]
 
     return {
         "id": empresa.id,
         "nome": empresa.nome,
         "documento": empresa.documento,
         "plano": plano,
-        "plano_nome": dados_plano["nome"],
+        "plano_nome": nome_plano_exibicao,
         "plano_descricao": dados_plano["descricao"],
+        "plano_preco": dados_plano.get("preco", 0),
         "status": empresa.status or "teste",
         "ativo": bool(empresa.ativo),
         "limite_pedidos_mes": empresa.limite_pedidos_mes

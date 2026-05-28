@@ -1,109 +1,90 @@
 """
-Rotas de pagamento / assinatura.
+Rotas de pagamento via Mercado Pago.
 
-Estrutura PREPARADA para integrar Mercado Pago ou Stripe no futuro, mas ainda
-SEM cobrança real:
-- POST /billing/upgrade  : troca o plano da empresa (uso interno/admin por enquanto).
-- POST /billing/webhook  : endpoint pronto para receber eventos do gateway depois.
+Fluxo completo:
+  POST /billing/assinar   → cria assinatura no MP, devolve link de checkout
+  POST /billing/webhook   → recebe eventos do MP e atualiza o plano da empresa
+  POST /billing/cancelar  → cancela assinatura ativa
+  GET  /billing/planos    → lista planos disponíveis (para o frontend)
 """
 
-from datetime import datetime, timedelta
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from app.database import SessionLocal, criar_tabelas
-from app.dependencies.auth_dependency import obter_empresa_id_atual
-from app.models.company_model import EmpresaModel
-from app.services.company_plan_service import (
-    PLANOS,
-    atualizar_plano_empresa,
-    obter_dados_empresa,
+from app.dependencies.auth_dependency import obter_empresa_id_atual, obter_usuario_atual
+from app.models.user_model import UsuarioModel
+from app.services.company_plan_service import PLANOS, PLANO_PADRAO, obter_dados_empresa
+from app.services.mp_service import (
+    cancelar_assinatura,
+    criar_assinatura,
+    processar_webhook_mp,
 )
 
 router = APIRouter(prefix="/billing", tags=["Pagamento"])
 
+PLANOS_ATIVOS = ["free", "profissional", "avancado"]
 
-class UpgradeEntrada(BaseModel):
+
+class AssinarEntrada(BaseModel):
     plano: str
 
 
 @router.get("/planos")
 def rota_listar_planos():
-    """Catálogo de planos disponíveis (para a tela de upgrade)."""
+    """Catálogo de planos para exibir na tela de Minha Conta."""
     return {
         "planos": [
             {
                 "id": chave,
-                "nome": dados["nome"],
-                "descricao": dados["descricao"],
-                "limite_pedidos_mes": dados["limite_pedidos_mes"],
+                "nome": PLANOS[chave]["nome"],
+                "descricao": PLANOS[chave]["descricao"],
+                "limite_pedidos_mes": PLANOS[chave]["limite_pedidos_mes"],
+                "preco": PLANOS[chave].get("preco", 0),
             }
-            for chave, dados in PLANOS.items()
+            for chave in PLANOS_ATIVOS
         ]
     }
 
 
-@router.post("/upgrade")
-def rota_upgrade_plano(
-    dados: UpgradeEntrada,
+@router.post("/assinar")
+def rota_assinar(
+    dados: AssinarEntrada,
+    usuario: UsuarioModel = Depends(obter_usuario_atual),
     empresa_id: int = Depends(obter_empresa_id_atual),
 ):
     """
-    Troca o plano da empresa. Por enquanto sem pagamento real — quando o gateway
-    estiver integrado, este passo virá depois da confirmação do pagamento.
+    Cria uma assinatura recorrente no Mercado Pago.
+    Devolve o link de checkout (init_point) para o frontend redirecionar o usuário.
     """
-    empresa = atualizar_plano_empresa(
+    empresa = obter_dados_empresa(empresa_id)
+    return criar_assinatura(
         empresa_id=empresa_id,
         plano=dados.plano,
-        status_empresa="ativo",
+        email_usuario=usuario.email,
+        nome_empresa=empresa.get("nome", ""),
     )
-    return {
-        "mensagem": "Plano atualizado com sucesso.",
-        "empresa": empresa,
-    }
+
+
+@router.post("/cancelar")
+def rota_cancelar(
+    empresa_id: int = Depends(obter_empresa_id_atual),
+):
+    """Cancela a assinatura ativa da empresa."""
+    return cancelar_assinatura(empresa_id=empresa_id)
 
 
 @router.post("/webhook")
-async def rota_webhook_pagamento(payload: dict):
+async def rota_webhook_mp(request: Request):
     """
-    Endpoint preparado para receber eventos do gateway (Mercado Pago / Stripe).
-
-    Hoje apenas registra e reconhece o evento. Quando a integração for feita, aqui
-    a gente vai: validar a assinatura do webhook, identificar a empresa pelo
-    assinatura_id e atualizar assinatura_status / data_vencimento / plano.
+    Recebe eventos do Mercado Pago (preapproval authorized/cancelled/paused).
+    O MP chama este endpoint automaticamente quando o status da assinatura muda.
+    URL pra configurar no painel do MP: https://<seu-backend>/billing/webhook
     """
-    criar_tabelas()
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
 
-    evento = payload.get("type") or payload.get("action") or "desconhecido"
-    assinatura_id = (
-        payload.get("assinatura_id")
-        or payload.get("subscription_id")
-        or (payload.get("data") or {}).get("id")
-    )
-
-    atualizado = False
-
-    if assinatura_id:
-        db = SessionLocal()
-        try:
-            empresa = (
-                db.query(EmpresaModel)
-                .filter(EmpresaModel.assinatura_id == str(assinatura_id))
-                .first()
-            )
-            if empresa:
-                status_evento = str(payload.get("status") or "").lower()
-                if status_evento in ("authorized", "approved", "active", "ativa"):
-                    empresa.assinatura_status = "ativa"
-                    empresa.status = "ativo"
-                    empresa.data_vencimento = datetime.utcnow() + timedelta(days=30)
-                    atualizado = True
-                elif status_evento in ("cancelled", "canceled", "cancelada"):
-                    empresa.assinatura_status = "cancelada"
-                    atualizado = True
-                db.commit()
-        finally:
-            db.close()
-
-    return {"recebido": True, "evento": evento, "empresa_atualizada": atualizado}
+    resultado = processar_webhook_mp(payload)
+    # Sempre retorna 200 pro MP (ele reenvia se der erro)
+    return {"ok": True, **resultado}
